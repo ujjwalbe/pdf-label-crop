@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Cropping Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 2.5em;
+            font-weight: 300;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: rgba(255,255,255,0.8);
+            font-size: 1.1em;
+        }
+
+        .upload-section {
+            padding: 40px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 15px;
+            padding: 60px 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #fafafa;
+        }
+
+        .upload-area:hover {
+            border-color: #4facfe;
+            background: rgba(79, 172, 254, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .upload-area.dragover {
+            border-color: #4facfe;
+            background: rgba(79, 172, 254, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            color: #ddd;
+            margin-bottom: 20px;
+        }
+
+        .upload-area:hover .upload-icon {
+            color: #4facfe;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 5px;
+            font-weight: 500;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.secondary {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        .controls {
+            padding: 20px 40px;
+            background: #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .page-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .page-info {
+            font-weight: 500;
+            color: #666;
+        }
+
+        .crop-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .viewer-section {
+            padding: 40px;
+            display: none;
+        }
+
+        .pdf-container {
+            position: relative;
+            display: inline-block;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .pdf-canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            cursor: crosshair;
+        }
+
+        .crop-overlay {
+            position: absolute;
+            border: 2px solid #4facfe;
+            background: rgba(79, 172, 254, 0.1);
+            pointer-events: none;
+            border-radius: 3px;
+        }
+
+        .crop-handles {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #4facfe;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            pointer-events: all;
+        }
+
+        .crop-handles.nw { top: -4px; left: -4px; cursor: nw-resize; }
+        .crop-handles.ne { top: -4px; right: -4px; cursor: ne-resize; }
+        .crop-handles.sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+        .crop-handles.se { bottom: -4px; right: -4px; cursor: se-resize; }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #eee;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe, #00f2fe);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .status {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            display: none;
+        }
+
+        .crop-preview {
+            margin-top: 30px;
+            text-align: center;
+            display: none;
+        }
+
+        .preview-canvas {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            max-width: 300px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .upload-area {
+                padding: 40px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Label Cropping Tool</h1>
+            <p>Visually select and crop areas from multi-page PDFs with precision</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">Drop your PDF here or click to browse</div>
+                <button class="btn" onclick="document.getElementById('fileInput').click()">Choose PDF File</button>
+                <input type="file" id="fileInput" class="file-input" accept=".pdf">
+            </div>
+        </div>
+
+        <div class="controls" id="controls" style="display: none;">
+            <div class="page-controls">
+                <button class="btn" id="prevPage">← Previous</button>
+                <span class="page-info" id="pageInfo">Page 1 of 1</span>
+                <button class="btn" id="nextPage">Next →</button>
+            </div>
+            <div class="crop-controls">
+                <button class="btn secondary" id="resetCrop">Reset Selection</button>
+                <button class="btn secondary" id="cropPage">Crop Current Page</button>
+                <button class="btn secondary" id="applyToAll">Apply to All Pages</button>
+                <button class="btn" id="downloadCropped">Download Cropped PDF</button>
+            </div>
+        </div>
+
+        <div class="viewer-section" id="viewerSection">
+            <div style="text-align: center;">
+                <div class="pdf-container" id="pdfContainer">
+                    <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
+                </div>
+            </div>
+            
+            <div class="crop-preview" id="cropPreview">
+                <h3>Crop Preview</h3>
+                <canvas id="previewCanvas" class="preview-canvas"></canvas>
+            </div>
+        </div>
+
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        class PDFCroppingTool {
+            constructor() {
+                this.pdfDoc = null;
+                this.pdfBytes = null; // Store original PDF bytes
+                this.currentPage = 1;
+                this.totalPages = 0;
+                this.canvas = document.getElementById('pdfCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.previewCanvas = document.getElementById('previewCanvas');
+                this.previewCtx = this.previewCanvas.getContext('2d');
+                this.scale = 2.0; // Increased from 1.5 for better resolution
+                
+                this.cropArea = null;
+                this.isDragging = false;
+                this.isResizing = false;
+                this.resizeHandle = null;
+                this.startX = 0;
+                this.startY = 0;
+                this.croppedPages = new Map();
+                
+                this.init();
+            }
+
+            init() {
+                // Set PDF.js worker
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                const fileInput = document.getElementById('fileInput');
+                const uploadArea = document.getElementById('uploadArea');
+                
+                // File input
+                fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+                
+                // Drag and drop
+                uploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.add('dragover');
+                });
+                
+                uploadArea.addEventListener('dragleave', () => {
+                    uploadArea.classList.remove('dragover');
+                });
+                
+                uploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0 && files[0].type === 'application/pdf') {
+                        this.loadPDF(files[0]);
+                    }
+                });
+                
+                uploadArea.addEventListener('click', () => {
+                    fileInput.click();
+                });
+
+                // Page controls
+                document.getElementById('prevPage').addEventListener('click', () => this.previousPage());
+                document.getElementById('nextPage').addEventListener('click', () => this.nextPage());
+                document.getElementById('resetCrop').addEventListener('click', () => this.resetCrop());
+                document.getElementById('cropPage').addEventListener('click', () => this.cropCurrentPage());
+                document.getElementById('applyToAll').addEventListener('click', () => this.applyToAllPages());
+                document.getElementById('downloadCropped').addEventListener('click', () => this.downloadCroppedPDF());
+
+                // Canvas events for cropping
+                this.canvas.addEventListener('mousedown', (e) => this.startCrop(e));
+                document.addEventListener('mousemove', (e) => this.updateCrop(e));
+                document.addEventListener('mouseup', () => this.endCrop());
+                
+                // Prevent context menu on canvas
+                this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+            }
+
+            async handleFileSelect(event) {
+                const file = event.target.files[0];
+                if (file && file.type === 'application/pdf') {
+                    await this.loadPDF(file);
+                }
+            }
+
+            async loadPDF(file) {
+                this.showStatus('Loading PDF...');
+                this.showProgress(true);
+                
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    this.pdfBytes = new Uint8Array(arrayBuffer); // Store original bytes
+                    this.pdfDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    this.totalPages = this.pdfDoc.numPages;
+                    this.currentPage = 1;
+                    
+                    await this.renderPage(1);
+                    this.showControls();
+                    this.updatePageInfo();
+                    this.hideStatus();
+                    
+                } catch (error) {
+                    this.showStatus('Error loading PDF: ' + error.message);
+                } finally {
+                    this.showProgress(false);
+                }
+            }
+
+            async renderPage(pageNum) {
+                const page = await this.pdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: this.scale });
+                
+                this.canvas.width = viewport.width;
+                this.canvas.height = viewport.height;
+                
+                const renderContext = {
+                    canvasContext: this.ctx,
+                    viewport: viewport
+                };
+                
+                await page.render(renderContext).promise;
+                
+                // Check if this page has a saved crop area
+                if (this.croppedPages.has(pageNum)) {
+                    this.cropArea = { ...this.croppedPages.get(pageNum) };
+                    this.updateCropOverlay();
+                    this.updatePreview();
+                } else {
+                    this.resetCrop();
+                }
+            }
+
+            previousPage() {
+                if (this.currentPage > 1) {
+                    this.currentPage--;
+                    this.renderPage(this.currentPage);
+                    this.updatePageInfo();
+                }
+            }
+
+            nextPage() {
+                if (this.currentPage < this.totalPages) {
+                    this.currentPage++;
+                    this.renderPage(this.currentPage);
+                    this.updatePageInfo();
+                }
+            }
+
+            updatePageInfo() {
+                const croppedCount = this.croppedPages.size;
+                const hasCurrentPageCrop = this.croppedPages.has(this.currentPage);
+                const pageStatus = hasCurrentPageCrop ? ' ✓' : '';
+                document.getElementById('pageInfo').textContent = 
+                    `Page ${this.currentPage} of ${this.totalPages}${pageStatus} (${croppedCount} cropped)`;
+            }
+
+            startCrop(e) {
+                e.preventDefault();
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (this.canvas.width / rect.width);
+                const y = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+
+                console.log('Starting crop at:', x, y); // Debug log
+
+                // Check if clicking on a resize handle
+                if (this.cropArea) {
+                    const handle = this.getResizeHandle(x, y);
+                    if (handle) {
+                        this.isResizing = true;
+                        this.resizeHandle = handle;
+                        this.startX = x;
+                        this.startY = y;
+                        console.log('Resizing handle:', handle); // Debug log
+                        return;
+                    }
+                }
+
+                // Start new crop area
+                this.isDragging = true;
+                this.startX = x;
+                this.startY = y;
+                this.cropArea = { x: x, y: y, width: 0, height: 0 };
+                console.log('New crop area started:', this.cropArea); // Debug log
+                this.updateCropOverlay();
+            }
+
+            updateCrop(e) {
+                if (!this.isDragging && !this.isResizing) return;
+
+                e.preventDefault();
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (this.canvas.width / rect.width);
+                const y = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+
+                if (this.isResizing) {
+                    this.resizeCropArea(x, y);
+                } else if (this.isDragging) {
+                    // Calculate width and height from start position
+                    const width = x - this.startX;
+                    const height = y - this.startY;
+                    
+                    // Handle negative dimensions (dragging up or left)
+                    if (width >= 0) {
+                        this.cropArea.x = this.startX;
+                        this.cropArea.width = width;
+                    } else {
+                        this.cropArea.x = x;
+                        this.cropArea.width = Math.abs(width);
+                    }
+                    
+                    if (height >= 0) {
+                        this.cropArea.y = this.startY;
+                        this.cropArea.height = height;
+                    } else {
+                        this.cropArea.y = y;
+                        this.cropArea.height = Math.abs(height);
+                    }
+
+                    console.log('Crop area updated:', this.cropArea); // Debug log
+                }
+
+                this.updateCropOverlay();
+                this.updatePreview();
+            }
+
+            endCrop() {
+                console.log('Ending crop - isDragging:', this.isDragging, 'isResizing:', this.isResizing); // Debug log
+                this.isDragging = false;
+                this.isResizing = false;
+                this.resizeHandle = null;
+                
+                // Ensure we have a valid crop area
+                if (this.cropArea && (this.cropArea.width < 5 || this.cropArea.height < 5)) {
+                    console.log('Crop area too small, resetting'); // Debug log
+                    this.resetCrop();
+                }
+            }
+
+            getResizeHandle(x, y) {
+                if (!this.cropArea) return null;
+                
+                const handles = {
+                    nw: { x: this.cropArea.x, y: this.cropArea.y },
+                    ne: { x: this.cropArea.x + this.cropArea.width, y: this.cropArea.y },
+                    sw: { x: this.cropArea.x, y: this.cropArea.y + this.cropArea.height },
+                    se: { x: this.cropArea.x + this.cropArea.width, y: this.cropArea.y + this.cropArea.height }
+                };
+
+                for (const [handle, pos] of Object.entries(handles)) {
+                    if (Math.abs(x - pos.x) < 10 && Math.abs(y - pos.y) < 10) {
+                        return handle;
+                    }
+                }
+                return null;
+            }
+
+            resizeCropArea(x, y) {
+                const dx = x - this.startX;
+                const dy = y - this.startY;
+
+                switch (this.resizeHandle) {
+                    case 'nw':
+                        this.cropArea.x += dx;
+                        this.cropArea.y += dy;
+                        this.cropArea.width -= dx;
+                        this.cropArea.height -= dy;
+                        break;
+                    case 'ne':
+                        this.cropArea.y += dy;
+                        this.cropArea.width += dx;
+                        this.cropArea.height -= dy;
+                        break;
+                    case 'sw':
+                        this.cropArea.x += dx;
+                        this.cropArea.width -= dx;
+                        this.cropArea.height += dy;
+                        break;
+                    case 'se':
+                        this.cropArea.width += dx;
+                        this.cropArea.height += dy;
+                        break;
+                }
+
+                this.startX = x;
+                this.startY = y;
+            }
+
+            updateCropOverlay() {
+                // Remove existing overlay
+                const existingOverlay = document.querySelector('.crop-overlay');
+                if (existingOverlay) {
+                    existingOverlay.remove();
+                }
+
+                if (!this.cropArea || this.cropArea.width <= 5 || this.cropArea.height <= 5) return;
+
+                const container = document.getElementById('pdfContainer');
+                const rect = this.canvas.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                
+                // Calculate the scale between canvas display size and actual canvas size
+                const scaleX = rect.width / this.canvas.width;
+                const scaleY = rect.height / this.canvas.height;
+
+                const overlay = document.createElement('div');
+                overlay.className = 'crop-overlay';
+                
+                // Position relative to the container
+                overlay.style.left = (this.cropArea.x * scaleX) + 'px';
+                overlay.style.top = (this.cropArea.y * scaleY) + 'px';
+                overlay.style.width = (this.cropArea.width * scaleX) + 'px';
+                overlay.style.height = (this.cropArea.height * scaleY) + 'px';
+
+                console.log('Overlay positioned at:', {
+                    left: overlay.style.left,
+                    top: overlay.style.top,
+                    width: overlay.style.width,
+                    height: overlay.style.height
+                }); // Debug log
+
+                // Add resize handles
+                const handles = ['nw', 'ne', 'sw', 'se'];
+                handles.forEach(handle => {
+                    const handleDiv = document.createElement('div');
+                    handleDiv.className = `crop-handles ${handle}`;
+                    
+                    // Add mouse events to handles
+                    handleDiv.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        this.isResizing = true;
+                        this.resizeHandle = handle;
+                        this.startX = (e.clientX - rect.left) * (this.canvas.width / rect.width);
+                        this.startY = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+                    });
+                    
+                    overlay.appendChild(handleDiv);
+                });
+
+                container.appendChild(overlay);
+            }
+
+            updatePreview() {
+                if (!this.cropArea || this.cropArea.width <= 0 || this.cropArea.height <= 0) {
+                    document.getElementById('cropPreview').style.display = 'none';
+                    return;
+                }
+
+                this.previewCanvas.width = this.cropArea.width;
+                this.previewCanvas.height = this.cropArea.height;
+
+                this.previewCtx.drawImage(
+                    this.canvas,
+                    this.cropArea.x, this.cropArea.y, this.cropArea.width, this.cropArea.height,
+                    0, 0, this.cropArea.width, this.cropArea.height
+                );
+
+                document.getElementById('cropPreview').style.display = 'block';
+            }
+
+            resetCrop() {
+                this.cropArea = null;
+                const overlay = document.querySelector('.crop-overlay');
+                if (overlay) overlay.remove();
+                document.getElementById('cropPreview').style.display = 'none';
+            }
+
+            cropCurrentPage() {
+                if (!this.cropArea) {
+                    alert('Please select an area to crop first.');
+                    return;
+                }
+
+                // Store crop area for current page
+                this.croppedPages.set(this.currentPage, { ...this.cropArea });
+                this.updatePageInfo();
+                this.showStatus(`Page ${this.currentPage} crop area saved!`);
+                setTimeout(() => this.hideStatus(), 2000);
+            }
+
+            applyToAllPages() {
+                if (!this.cropArea) {
+                    alert('Please select an area to crop first.');
+                    return;
+                }
+
+                // Apply current crop area to all pages
+                for (let i = 1; i <= this.totalPages; i++) {
+                    this.croppedPages.set(i, { ...this.cropArea });
+                }
+                
+                this.updatePageInfo();
+                this.showStatus(`Crop area applied to all ${this.totalPages} pages!`);
+                setTimeout(() => this.hideStatus(), 2000);
+            }
+
+            async downloadCroppedPDF() {
+                if (this.croppedPages.size === 0) {
+                    alert('No pages have been cropped yet. Please crop at least one page.');
+                    return;
+                }
+
+                this.showStatus('Generating native PDF crop...');
+                this.showProgress(true);
+
+                try {
+                    // Try native PDF cropping first
+                    await this.generateNativePDFCrop();
+                } catch (error) {
+                    console.error('Native PDF generation failed:', error);
+                    this.showStatus('Native PDF generation failed. Using high-quality image method...');
+                    
+                    // Fallback to high-quality image-based PDF
+                    setTimeout(() => {
+                        this.generateImageBasedPDF();
+                    }, 1000);
+                }
+            }
+
+            async generateNativePDFCrop() {
+                // Load the original PDF with PDF-lib
+                const pdfDoc = await PDFLib.PDFDocument.load(this.pdfBytes);
+                const newPdfDoc = await PDFLib.PDFDocument.create();
+                
+                // Get page dimensions from the first page to calculate crop ratios
+                const firstPage = await this.pdfDoc.getPage(1);
+                const viewport = firstPage.getViewport({ scale: 1.0 });
+                const pageWidth = viewport.width;
+                const pageHeight = viewport.height;
+
+                for (const [pageNum, cropArea] of this.croppedPages) {
+                    // Get the page from original PDF
+                    const [originalPage] = await newPdfDoc.copyPages(pdfDoc, [pageNum - 1]);
+                    
+                    // Convert crop coordinates from canvas scale to PDF points
+                    const scaleRatio = 1.0 / this.scale;
+                    const cropX = cropArea.x * scaleRatio;
+                    const cropY = cropArea.y * scaleRatio;
+                    const cropWidth = cropArea.width * scaleRatio;
+                    const cropHeight = cropArea.height * scaleRatio;
+                    
+                    // PDF coordinates start from bottom-left, canvas from top-left
+                    const pdfCropX = cropX;
+                    const pdfCropY = pageHeight - cropY - cropHeight;
+                    
+                    // Set the crop box and media box
+                    originalPage.setCropBox(
+                        pdfCropX,
+                        pdfCropY,
+                        pdfCropX + cropWidth,
+                        pdfCropY + cropHeight
+                    );
+                    
+                    originalPage.setMediaBox(0, 0, cropWidth, cropHeight);
+                    originalPage.translateContent(-pdfCropX, -pdfCropY);
+                    
+                    newPdfDoc.addPage(originalPage);
+                }
+
+                // Generate and download the PDF
+                const pdfBytes = await newPdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'cropped-document-native.pdf';
+                a.click();
+                
+                URL.revokeObjectURL(url);
+                
+                this.showStatus('Native PDF generated successfully! Original quality preserved.');
+                setTimeout(() => this.hideStatus(), 3000);
+                this.showProgress(false);
+            }
+
+            async generateImageBasedPDF() {
+                try {
+                    this.showStatus('Generating high-quality image-based PDF...');
+                    
+                    // Create a new PDF document using PDF-lib (more reliable than jsPDF)
+                    const pdfDoc = await PDFLib.PDFDocument.create();
+                    
+                    // Use higher scale for better resolution
+                    const highResScale = 3.0;
+
+                    for (const [pageNum, cropArea] of this.croppedPages) {
+                        // Render the original page at high resolution
+                        const page = await this.pdfDoc.getPage(pageNum);
+                        const viewport = page.getViewport({ scale: highResScale });
+                        
+                        const tempCanvas = document.createElement('canvas');
+                        const tempCtx = tempCanvas.getContext('2d');
+                        tempCanvas.width = viewport.width;
+                        tempCanvas.height = viewport.height;
+                        
+                        await page.render({
+                            canvasContext: tempCtx,
+                            viewport: viewport
+                        }).promise;
+
+                        // Scale crop area to match high resolution
+                        const scaleRatio = highResScale / this.scale;
+                        const scaledCropArea = {
+                            x: cropArea.x * scaleRatio,
+                            y: cropArea.y * scaleRatio,
+                            width: cropArea.width * scaleRatio,
+                            height: cropArea.height * scaleRatio
+                        };
+
+                        // Create cropped canvas at high resolution
+                        const croppedCanvas = document.createElement('canvas');
+                        const croppedCtx = croppedCanvas.getContext('2d');
+                        croppedCanvas.width = scaledCropArea.width;
+                        croppedCanvas.height = scaledCropArea.height;
+
+                        croppedCtx.drawImage(
+                            tempCanvas,
+                            scaledCropArea.x, scaledCropArea.y, scaledCropArea.width, scaledCropArea.height,
+                            0, 0, scaledCropArea.width, scaledCropArea.height
+                        );
+
+                        // Convert to PNG bytes
+                        const pngDataUrl = croppedCanvas.toDataURL('image/png', 1.0);
+                        const pngBytes = this.dataUrlToBytes(pngDataUrl);
+                        
+                        // Embed the image in PDF
+                        const pngImage = await pdfDoc.embedPng(pngBytes);
+                        const { width, height } = pngImage.scale(0.8); // Scale down for reasonable PDF size
+                        
+                        // Add a page with the image
+                        const pdfPage = pdfDoc.addPage([width, height]);
+                        pdfPage.drawImage(pngImage, {
+                            x: 0,
+                            y: 0,
+                            width: width,
+                            height: height,
+                        });
+                    }
+
+                    // Generate and download the PDF
+                    const pdfBytes = await pdfDoc.save();
+                    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'cropped-document.pdf';
+                    a.click();
+                    
+                    URL.revokeObjectURL(url);
+                    
+                    this.showStatus('High-quality PDF generated successfully!');
+                    setTimeout(() => this.hideStatus(), 3000);
+
+                } catch (error) {
+                    console.error('Image-based PDF generation error:', error);
+                    this.showStatus('Error generating PDF: ' + error.message);
+                } finally {
+                    this.showProgress(false);
+                }
+            }
+
+            // Helper function to convert data URL to bytes
+            dataUrlToBytes(dataUrl) {
+                const base64 = dataUrl.split(',')[1];
+                const binaryString = atob(base64);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                return bytes;
+            }
+
+            showControls() {
+                document.getElementById('controls').style.display = 'flex';
+                document.getElementById('viewerSection').style.display = 'block';
+            }
+
+            showStatus(message) {
+                const status = document.getElementById('status');
+                status.textContent = message;
+                status.style.display = 'block';
+            }
+
+            hideStatus() {
+                document.getElementById('status').style.display = 'none';
+            }
+
+            showProgress(show) {
+                document.getElementById('progressBar').style.display = show ? 'block' : 'none';
+                if (show) {
+                    // Animate progress bar
+                    const fill = document.getElementById('progressFill');
+                    fill.style.width = '0%';
+                    setTimeout(() => fill.style.width = '100%', 100);
+                }
+            }
+        }
+
+        // Initialize the tool when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PDFCroppingTool();
+        });
+    </script>
+</body>
+</html>
